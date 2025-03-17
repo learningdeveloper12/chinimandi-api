@@ -4,6 +4,7 @@ import DiscountCoupon from "../model/discountCoupen.model.js";
 import Event from "../model/Events.model.js";
 import User from "../model/User.model.js";
 import { isValidObjectId } from "../utils/objectIdValidator.js";
+import xlsx from "xlsx"
 
 // Helper function to populate event details
 const populateUserDetails = async (userQuery) => {
@@ -399,8 +400,8 @@ export const deleteEvntBooking = async (req, res) => {
 export const getMyBookings = async (req, res) => {
   console.log("Get My Event Booking Controller");
   try {
-    const {id} = req.query
-    const bookings = await populateUserDetails(BookEvent.find({originUserId:id}).sort({createdAt:-1}));
+    const { id } = req.query
+    const bookings = await populateUserDetails(BookEvent.find({ originUserId: id }).sort({ createdAt: -1 }));
     res.status(200).json({
       success: true,
       message: "Successfully get Event bookings",
@@ -496,6 +497,92 @@ export const applyDiscountCoupon = async (req, res) => {
       success: false,
       message: "Failed to apply discount coupon",
       error: error.message,
+    });
+  }
+};
+
+export const bulkCreateBookEvent = async (req, res) => {
+
+  try {
+    const { eventId } = req.body;
+    if (!isValidObjectId(eventId)) return res.status(400).json({ message: "Invalid event format" })
+
+    const eventDetails = await Event.findById(eventId);
+    if (!eventDetails) {
+      return res.status(400).json({ message: "Event does not exist" });
+    }
+
+    if (!eventDetails.isApproved) {
+      return res.status(400).json({ message: "Event is not approved" });
+    }
+
+    const workbook = xlsx.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+
+    const data = xlsx.utils.sheet_to_json(sheet);
+
+    const formattedData = data.map((row) => ({
+      name: row["Name"],
+      email: row["Email"],
+      company: row["Company"],
+    }));
+
+    const payload = [];
+    let taxAmount = eventDetails?.priceDetails[0]?.priceInINR * 0.18;
+    let finalPrice = eventDetails?.priceDetails[0]?.priceInINR - taxAmount;
+    await Promise.all(
+      formattedData.map(async (val) => {
+
+        const { name, email, company } = val;
+        if (name || email) {
+          const user = await User.findOne({ email, name, companyName: company });
+
+          if (!user) {
+            const newUser = new User({ name, email, companyName: company, password: "12345678" });
+            await newUser.save();
+          }
+
+          payload.push({
+            orderId: generateOrderId(),
+            originUserId: "",
+            eventId,
+            // userId: "",
+            numberOfTickets: 1,
+            totalPrice: finalPrice,
+            status: "confirmed",
+            bookingDate: new Date(),
+            attendeesDetails: [
+              {
+                fname: name,
+                lname: "",
+                companyName: company,
+                country: "India",
+                city: "",
+                state: "",
+                email: email,
+                profileImage: "",
+              },
+            ],
+            taxAmount,
+            paymentMethod: "visa",
+          });
+
+        }
+      })
+    );
+    await BookEvent.insertMany(payload)
+
+    return res.status(201).json({
+      success: true,
+      message: "Event Booking created successfully",
+    });
+  } catch (error) {
+    console.error("Error creating booking:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create event booking",
+      error: error.message || "Unknown error",
     });
   }
 };

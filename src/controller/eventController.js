@@ -1,5 +1,6 @@
 import { DateTime } from "luxon";
 import Event from "../model/Events.model.js";
+import RequestUser from "../model/RequestUser.model.js";
 import { isValidObjectId } from "../utils/objectIdValidator.js";
 import BookEvent from "../model/BookEvent.model.js";
 import jwt from "jsonwebtoken";
@@ -456,7 +457,7 @@ export const getEventAttendees = async (req, res) => {
   console.log("Get Event Attendees Controller");
 
   try {
-    const { eventId } = req.query;
+    const { eventId, currentUserId  } = req.query;
 
     // const { id: userId } = req.user;
 
@@ -492,12 +493,62 @@ export const getEventAttendees = async (req, res) => {
     //     .json({ message: "You must book this event to view the attendees" });
     // }
 
-    let attendees = eventBookings
-      ?.map((booking) => ({
-        attendeesDetails: booking.attendeesDetails,
-        bookingId: booking._id,
-      }))
-      .flatMap((booking) => booking.attendeesDetails);
+    // let attendees = eventBookings
+    //   ?.map((booking) => ({
+    //     attendeesDetails: booking.attendeesDetails,
+    //     bookingId: booking._id,
+    //   }))
+    //   .flatMap((booking) => booking.attendeesDetails);
+
+    // let attendees = eventBookings
+    // ?.flatMap((booking) => {
+    //   // Convert booking to a plain object if it's a Mongoose document
+    //   const plainBooking = booking.toObject ? booking.toObject() : booking;
+  
+    //   return plainBooking.attendeesDetails.map((attendee) => {
+    //     // Convert attendee to a plain object too
+    //     const plainAttendee = attendee.toObject ? attendee.toObject() : attendee;
+  
+    //     return {
+    //       ...plainAttendee,
+    //       bookingId: plainBooking._id, // add the bookingId here
+    //     };
+    //   });
+    // });
+
+
+
+    const attendees = await Promise.all(
+      eventBookings?.flatMap(async (booking) => {
+        // Convert to plain object if needed
+        const plainBooking = booking.toObject ? booking.toObject() : booking;
+    
+        return Promise.all(
+          plainBooking.attendeesDetails.map(async (attendee) => {
+            const plainAttendee = attendee.toObject ? attendee.toObject() : attendee;
+
+            if(currentUserId && currentUserId != null){
+              const existingRequest = await RequestUser.findOne({
+                bookingId: new mongoose.Types.ObjectId(plainBooking._id),
+                currentUserId: currentUserId,
+              }).select('_id status');
+              return {
+                ...plainAttendee,
+                bookingId: plainBooking._id,
+                requestAlreadySent: !!existingRequest,
+                requestStatus: existingRequest ? existingRequest.status : null,
+              };
+            }
+            else{
+              return {
+                ...plainAttendee,
+                bookingId: plainBooking._id
+              }; 
+            }
+          })
+        );
+      })
+    );
 
     // attendees = attendees.filter(
     //   (attendee) => attendee.id.toString() !== loggedInUser._id.toString()
@@ -578,3 +629,111 @@ export const getEventSpeakers = async (req, res) => {
   }
 };
 
+
+export const sendAttendeeRequest = async (req, res) => {
+  try {
+    const { currentUserId, bookingId } = req.query;
+
+    const bookingEvevntData = await BookEvent.aggregate([
+      { $match: { _id: new mongoose.Types.ObjectId(bookingId) } },
+    ]);
+
+    const addRequestData = {
+      currentUserId: currentUserId,
+      requestUserId: bookingEvevntData.originUserId ? bookingEvevntData.originUserId : 1,
+      status: "pending",
+      bookingId: new mongoose.Types.ObjectId(bookingId)
+    }
+
+    const addRequest = new RequestUser(addRequestData);
+    await addRequest.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Request send successfully",
+      addRequest,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to Booking Event attendees",
+      error: error.message,
+    });
+  }
+};
+
+export const statusAttendeeRequest = async (req, res) => {
+  try {
+    const { requestId, status } = req.query;
+
+    const requestUserData = await RequestUser.findById(new mongoose.Types.ObjectId(requestId));
+    requestUserData.status = status;
+    const result = requestUserData.save();
+    
+    res.status(200).json({
+      success: true,
+      message: "Request updated successfully",
+      result,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to Booking Event attendees",
+      error: error.message,
+    });
+  }
+};
+
+
+export const getAttendeeRequest = async (req, res) => {
+  try {
+    const { currentUserId } = req.query;
+
+    const getRequestData = await RequestUser.aggregate([
+      { $match: { requestUserId: currentUserId } },
+      {
+        $lookup: {
+          from: 'bookevents',
+          localField: 'bookingId',
+          foreignField: '_id',
+          as: 'bookingDetails',
+        },
+      },
+      {
+        $unwind: {
+          path: '$bookingDetails',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $lookup: {
+          from: 'chinimandiusers',
+          localField: 'currentUserId',
+          foreignField: 'chnimandiUserId',
+          as: 'requestUserDetail',
+        },
+      },
+      {
+        $unwind: {
+          path: '$requestUserDetail',
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: "Request fetched successfully",
+      getRequestData,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get request attendees",
+      error: error.message,
+    });
+  }
+};

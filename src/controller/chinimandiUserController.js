@@ -8,10 +8,12 @@ export const updateChinimandiUser = async (req, res) => {
     const { chinimandi_user_id, chinimandi_user_name, chinimandi_user_image } = req.body;
 
     const chinimandiUser = await ChinimandiUser.findOne({ chnimandiUserId: chinimandi_user_id });
+
     if (!chinimandiUser) {
-      return res.status(404).json({ message: "User not found" });
+      await ChinimandiUser.create({ chnimandiUserId: chinimandi_user_id, name: chinimandi_user_name, profileImage: chinimandi_user_image })
+    } else {
+      await ChinimandiUser.updateOne({ chnimandiUserId: chinimandi_user_id }, { $set: { name: chinimandi_user_name, profileImage: chinimandi_user_image } })
     }
-    await ChinimandiUser.updateOne({chnimandiUserId:chinimandi_user_id},{$set:{name:chinimandi_user_name, profileImage: chinimandi_user_image}})
 
     return res.status(201).json({
       success: true,

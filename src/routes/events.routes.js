@@ -9,6 +9,9 @@ const PATH = {
   USERBYID: "/eventById",
   VIEW_ATTENDEES:"/getEventAttendees",
   VIEW_SPEAKER:"/getEventSpeakers",
+  SEND_REQUEST:"/send-request",
+  STATUS_REQUEST:"/status-request",
+  GET_REQUEST:"/get-request",
 };
 
 routes
@@ -22,5 +25,10 @@ routes.route(PATH.USERBYID).get(Controller.getEventById);
 
 routes.route(PATH.VIEW_ATTENDEES).get(Controller.getEventAttendees);
 routes.route(PATH.VIEW_SPEAKER).get(Controller.getEventSpeakers);
+
+
+routes.route(PATH.SEND_REQUEST).get(Controller.sendAttendeeRequest);
+routes.route(PATH.STATUS_REQUEST).get(Controller.statusAttendeeRequest);
+routes.route(PATH.GET_REQUEST).get(Controller.getAttendeeRequest);
 
 export default routes;

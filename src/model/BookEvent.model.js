@@ -63,7 +63,7 @@ const BookEventSchema = new mongoose.Schema({
     },
     originUserId:{
        type:Number,
-       required: [true, "Origin user ID is required"], 
+    //    required: [true, "Origin user ID is required"], 
     },
     numberOfTickets: { 
         type: Number, 
