@@ -518,7 +518,7 @@ export const getEventAttendees = async (req, res) => {
 
 
 
-    const attendees = await Promise.all(
+    const attendeesNested = await Promise.all(
       eventBookings?.flatMap(async (booking) => {
         // Convert to plain object if needed
         const plainBooking = booking.toObject ? booking.toObject() : booking;
@@ -549,6 +549,8 @@ export const getEventAttendees = async (req, res) => {
         );
       })
     );
+
+    const attendees = attendeesNested.flat();
 
     // attendees = attendees.filter(
     //   (attendee) => attendee.id.toString() !== loggedInUser._id.toString()
