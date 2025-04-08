@@ -30,14 +30,14 @@ export const createPost = async (req, res) => {
       share,
     } = req.body;
 
-    console.log(req.body,"BODY DATA")
+    console.log(req.body, "BODY DATA")
 
     let postImages;
 
     if (req.file) {
       const profileImage = await uploadFileBuffer(req.file);
       postImages = profileImage;
-    }    
+    }
 
     let existChinimandiUser = await ChinimandiUser.findOne({
       chnimandiUserId: chinimandi_user_id,
@@ -65,7 +65,7 @@ export const createPost = async (req, res) => {
     const post = new Post({
       eventId,
       description,
-      postImage : postImages,
+      postImage: postImages,
       share,
       createBy: chinimandiUserId,
     });
@@ -167,10 +167,10 @@ export const getPost = async (req, res) => {
         chnimandiUserId: userId
       });
 
-    postData = postData.map((post) => {
-      const hasLiked = post.likes.some(
-        (like) =>
-          like.likedBy.toString() === chinimandiUser?._id.toString()
+      postData = postData.map((post) => {
+        const hasLiked = post.likes.some(
+          (like) =>
+            like.likedBy.toString() === chinimandiUser?._id.toString()
         );
         return { ...post, hasLiked };
       });
@@ -443,3 +443,143 @@ export const commentPost = async (req, res) => {
 //     });
 //   }
 // };
+
+
+export const getAllPosts = async (req, res) => {
+  try {
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : null; // Parse limit if provided
+    const offset = req.query.offset ? parseInt(req.query.offset, 10) : null; // Parse offset if provided
+
+    const aggregationPipeline = [
+      // { $match: matchQuery },
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: "likes",
+          localField: "_id",
+          foreignField: "postId",
+          as: "likes",
+          pipeline: [
+            {
+              $lookup: {
+                from: "chinimandiusers",
+                localField: "likedBy",
+                foreignField: "_id",
+                as: "userDetails",
+              },
+            },
+            { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
+          ],
+        },
+      },
+      {
+        $lookup: {
+          from: "chinimandiusers",
+          localField: "createBy",
+          foreignField: "_id",
+          as: "createdUserDetail",
+        },
+      },
+      { $unwind: { path: "$createdUserDetail", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "comments",
+          localField: "_id",
+          foreignField: "postId",
+          as: "comments",
+          pipeline: [
+            {
+              $lookup: {
+                from: "chinimandiusers",
+                localField: "createdBy",
+                foreignField: "_id",
+                as: "userDetails",
+              },
+            },
+            { $unwind: { path: "$userDetails", preserveNullAndEmptyArrays: true } },
+          ],
+        },
+      },
+    ];
+
+    // Apply pagination stages only if limit and offset are provided
+    if (limit !== null && offset !== null) {
+      aggregationPipeline.push({ $skip: offset });
+      aggregationPipeline.push({ $limit: limit });
+    }
+
+    let postData = await Post.aggregate(aggregationPipeline);
+    const totalCount = await Post.countDocuments()
+
+    res.status(200).json({
+      success: true,
+      postData: postData,
+      pagination: limit !== null && offset !== null ? { limit, offset, totalCount } : null,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: "Failed to get posts",
+      error: error.message,
+    });
+  }
+};
+
+export const updatePost = async (req, res) => {
+  console.log("Update Post Controller");
+  try {
+    const { postId, description } = req.body;
+    if (!postId) return res.status(400).json({ success: false, message: "PostId is required" });
+
+    const post = await Post.findOne({ _id: postId })
+    if (!post) return res.status(400).json({ success: false, message: "Post details not found" });
+
+    let postImages;
+    if (req.file) {
+      const profileImage = await uploadFileBuffer(req.file);
+      postImages = profileImage;
+    }
+
+    post.description = description || post.description;
+    post.postImage = postImages || post.postImage;
+    await post.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Post Updated successfully",
+      post,
+    });
+  } catch (error) {
+    console.error("Error updating Post:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to create Post",
+      error: error.message || "Unknown error",
+    });
+  }
+};
+
+export const deletePosts = async (req, res) => {
+  try {
+    const { postId } = req.body;
+    if (!postId) return res.status(400).json({ success: false, message: "PostId is required" });
+
+    const post = await Post.findByIdAndDelete(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Post not found" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Post Deleted successfully",
+      post,
+    });
+  } catch (error) {
+    console.error("Error updating Post:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete Post",
+      error: error.message || "Unknown error",
+    });
+  }
+};
