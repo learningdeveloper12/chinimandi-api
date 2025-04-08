@@ -561,7 +561,7 @@ export const updatePost = async (req, res) => {
 
 export const deletePosts = async (req, res) => {
   try {
-    const { postId } = req.body;
+    const { postId } = req.query;
     if (!postId) return res.status(400).json({ success: false, message: "PostId is required" });
 
     const post = await Post.findByIdAndDelete(postId);
